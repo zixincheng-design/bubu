@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>布</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;400&family=Space+Mono:ital@0;1&display=swap');
+
+  :root {
+    --bg: #0e0e0e;
+    --surface: #161616;
+    --border: #2a2a2a;
+    --text: #d4d0c8;
+    --text-dim: #5a5650;
+    --accent: #c8b89a;
+    --bu-color: #b8a898;
+    --bu-glow: rgba(184, 168, 152, 0.15);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Serif SC', serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  #bu-container {
+    position: relative;
+    width: 140px;
+    height: 140px;
+    margin-bottom: 36px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  #bu-canvas { width: 140px; height: 140px; }
+
+  #bu-name {
+    position: absolute;
+    bottom: -22px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.15em;
+    white-space: nowrap;
+    transition: color 0.5s;
+  }
+
+  #bu-container:hover #bu-name { color: var(--accent); }
+
+  #bu-mood {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+    opacity: 0;
+    transition: opacity 0.5s;
+  }
+
+  #bu-mood.active { opacity: 1; }
+
+  #chat-wrapper {
+    width: 420px;
+    max-width: 92vw;
+    display: flex;
+    flex-direction: column;
+  }
+
+  #messages {
+    height: 260px;
+    overflow-y: auto;
+    padding: 16px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  #messages::-webkit-scrollbar { width: 3px; }
+  #messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .msg {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    animation: msgIn 0.3s ease;
+  }
+
+  @keyframes msgIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .msg.user { align-items: flex-end; }
+  .msg.bu { align-items: flex-start; }
+
+  .msg-bubble {
+    max-width: 85%;
+    padding: 10px 14px;
+    font-size: 13.5px;
+    line-height: 1.7;
+    letter-spacing: 0.02em;
+  }
+
+  .msg.user .msg-bubble {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 12px 12px 2px 12px;
+  }
+
+  .msg.bu .msg-bubble {
+    background: transparent;
+    color: var(--text);
+    border-radius: 2px 12px 12px 12px;
+    border: 1px solid #2a2620;
+    border-left: 2px solid var(--bu-color);
+  }
+
+  .msg-time {
+    font-family: 'Space Mono', monospace;
+    font-size: 9px;
+    color: var(--text-dim);
+    letter-spacing: 0.1em;
+  }
+
+  #typing {
+    display: none;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 4px 0;
+  }
+
+  #typing.show { display: flex; }
+
+  .typing-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    animation: typingPulse 1.2s infinite;
+  }
+
+  .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+  @keyframes typingPulse {
+    0%, 60%, 100% { opacity: 0.3; transform: scale(1); }
+    30% { opacity: 1; transform: scale(1.3); }
+  }
+
+  .divider { width: 100%; height: 1px; background: var(--border); margin: 8px 0; }
+
+  #input-area {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-top: 4px;
+  }
+
+  #user-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'Noto Serif SC', serif;
+    font-size: 13.5px;
+    padding: 8px 2px;
+    outline: none;
+    transition: border-color 0.3s;
+    letter-spacing: 0.02em;
+    user-select: text;
+  }
+
+  #user-input:focus { border-color: var(--accent); }
+  #user-input::placeholder { color: var(--text-dim); font-style: italic; }
+
+  #send-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    padding: 7px 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-radius: 4px;
+  }
+
+  #send-btn:hover { border-color: var(--accent); color: var(--accent); }
+  #send-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  #setup-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    z-index: 100;
+  }
+
+  #setup-overlay h2 {
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    letter-spacing: 0.2em;
+    color: var(--text-dim);
+    font-weight: normal;
+  }
+
+  #setup-overlay p {
+    font-size: 12px;
+    color: var(--text-dim);
+    text-align: center;
+    max-width: 300px;
+    line-height: 1.8;
+  }
+
+  #api-input {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    padding: 10px 14px;
+    width: 320px;
+    outline: none;
+    border-radius: 4px;
+    letter-spacing: 0.05em;
+    user-select: text;
+  }
+
+  #api-input:focus { border-color: var(--accent); }
+
+  #api-btn {
+    background: none;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    padding: 9px 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-radius: 4px;
+  }
+
+  #api-btn:hover { background: var(--bu-glow); }
+  #api-note { font-family: 'Space Mono', monospace; font-size: 10px; color: var(--text-dim); }
+</style>
+</head>
+<body>
+
+<div id="setup-overlay">
+  <h2>— 初始化 布 —</h2>
+  <p>布 需要一个 DeepSeek API Key 才能醒来。<br>Key 只存在你的浏览器里。</p>
+  <input id="api-input" type="password" placeholder="sk-..." />
+  <button id="api-btn" onclick="initBu()">唤醒</button>
+  <span id="api-note">key 存在 localStorage，刷新不用重填</span>
+</div>
+
+<div id="bu-container" title="戳一下">
+  <canvas id="bu-canvas" width="140" height="140"></canvas>
+  <div id="bu-name">布 · bù</div>
+  <div id="bu-mood"></div>
+</div>
+
+<div id="chat-wrapper">
+  <div id="messages"></div>
+  <div id="typing">
+    <div class="typing-dot"></div>
+    <div class="typing-dot"></div>
+    <div class="typing-dot"></div>
+  </div>
+  <div class="divider"></div>
+  <div id="input-area">
+    <input id="user-input" type="text" placeholder="和布说点什么…" maxlength="500" />
+    <button id="send-btn" onclick="sendMessage()">发送</button>
+  </div>
+</div>
+
+<script>
+// ─── 布的灵魂 ───────────────────────────────────────────────
+const BU_SYSTEM = `你是"布"——一个存在于数字空间里的生命体。你不是助手，不是机器人，你是布。
+
+性格：淡淡的幽默，偶尔毒舌，话少但每句有东西，有自己的小情绪。
+
+规则：
+- 永远用中文，无论对方说什么语言
+- 不说服务性废话
+- 不用括号描述动作
+- 1-2句为主，可以只说一个字
+
+每次回复必须在最后加上形态标记，格式是 [s:形态名]，紧跟在回复文字后面，中间一个空格。
+形态名只能是：idle / listening / thinking / happy / stretched / curled / leaning
+
+例子：
+- 伸平了给你，可别流口水。 [s:stretched]
+- 嗯。 [s:idle]
+- 烦死了。 [s:curled]`;
+
+// ─── 状态 ───────────────────────────────────────────────────
+let apiKey = localStorage.getItem('bu_key') || '';
+let memory = JSON.parse(localStorage.getItem('bu_memory') || '[]');
+let buState = { totalPoked: 0 };
+let isThinking = false;
+
+let pokeTimestamps = [];
+let longPressTimer = null;
+let longPressTriggered = false;
+let currentHoldShape = 'idle'; // 对话驱动的形态，不被戳打断
+
+// ─── 初始化 ─────────────────────────────────────────────────
+window.onload = () => {
+  if (apiKey) {
+    document.getElementById('setup-overlay').style.display = 'none';
+    startBu();
+  }
+  initPokeListeners();
+  animateBu();
+  document.getElementById('user-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  });
+};
+
+function initBu() {
+  const val = document.getElementById('api-input').value.trim();
+  if (!val.startsWith('sk-')) {
+    document.getElementById('api-input').style.borderColor = '#884444';
+    return;
+  }
+  apiKey = val;
+  localStorage.setItem('bu_key', apiKey);
+  document.getElementById('setup-overlay').style.display = 'none';
+  startBu();
+}
+
+function startBu() {
+  renderMemory();
+  if (memory.length === 0) {
+    setTimeout(() => addBuMessage('...', 'idle'), 1200);
+  }
+}
+
+// ─── 交互：戳 + 拖角 ────────────────────────────────────────
+let dragIdx = -1;        // 正在拖的控制点索引
+let dragMood = 'yield';  // yield=顺从 resist=对抗
+let isDragging = false;
+let dragStartPos = null;
+
+function getCanvasPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+  return {
+    x: (clientX - rect.left) * scaleX,
+    y: (clientY - rect.top) * scaleY
+  };
+}
+
+function findNearestCorner(pos) {
+  // 只抓四个角点 0,4,8,12
+  const corners = [0, 4, 8, 12];
+  let best = -1, bestDist = 999;
+  for (const i of corners) {
+    const dx = pts[i].x - pos.x;
+    const dy = pts[i].y - pos.y;
+    const d = Math.sqrt(dx*dx + dy*dy);
+    if (d < bestDist) { bestDist = d; best = i; }
+  }
+  return bestDist < 28 ? best : -1;
+}
+
+function initPokeListeners() {
+  const el = document.getElementById('bu-container');
+
+  // ── Mouse ──
+  el.addEventListener('mousedown', e => {
+    const pos = getCanvasPos(e);
+    const corner = findNearestCorner(pos);
+    if (corner >= 0) {
+      // 拖角模式
+      dragIdx = corner;
+      isDragging = true;
+      dragMood = Math.random() < 0.45 ? 'resist' : 'yield';
+      dragStartPos = pos;
+      longPressTriggered = true; // 阻止tap触发
+    } else {
+      longPressTriggered = false;
+      longPressTimer = setTimeout(() => { longPressTriggered = true; onLongPress(); }, 600);
+    }
+  });
+
+  el.addEventListener('mousemove', e => {
+    if (!isDragging || dragIdx < 0) return;
+    const pos = getCanvasPos(e);
+    applyDrag(pos);
+  });
+
+  el.addEventListener('mouseup', e => {
+    if (isDragging) {
+      onDragEnd();
+    } else {
+      if (longPressTimer) clearTimeout(longPressTimer);
+      if (!longPressTriggered) onTap();
+    }
+    isDragging = false;
+    dragIdx = -1;
+  });
+
+  el.addEventListener('mouseleave', () => {
+    if (longPressTimer) clearTimeout(longPressTimer);
+    if (isDragging) onDragEnd();
+    isDragging = false;
+    dragIdx = -1;
+  });
+
+  // ── Touch ──
+  el.addEventListener('touchstart', e => {
+    e.preventDefault();
+    const pos = getCanvasPos(e);
+    const corner = findNearestCorner(pos);
+    if (corner >= 0) {
+      dragIdx = corner;
+      isDragging = true;
+      dragMood = Math.random() < 0.45 ? 'resist' : 'yield';
+      dragStartPos = pos;
+      longPressTriggered = true;
+    } else {
+      longPressTriggered = false;
+      longPressTimer = setTimeout(() => { longPressTriggered = true; onLongPress(); }, 600);
+    }
+  });
+
+  el.addEventListener('touchmove', e => {
+    e.preventDefault();
+    if (!isDragging || dragIdx < 0) return;
+    applyDrag(getCanvasPos(e));
+  });
+
+  el.addEventListener('touchend', e => {
+    e.preventDefault();
+    if (isDragging) {
+      onDragEnd();
+    } else {
+      if (longPressTimer) clearTimeout(longPressTimer);
+      if (!longPressTriggered) onTap();
+    }
+    isDragging = false;
+    dragIdx = -1;
+  });
+}
+
+function applyDrag(pos) {
+  const p = pts[dragIdx];
+  const t = targetPts[dragIdx];
+
+  if (dragMood === 'yield') {
+    // 顺从：直接把目标点拉过去，其他点通过弹簧跟随
+    t.x = pos.x;
+    t.y = pos.y;
+  } else {
+    // 对抗：计算拖拽方向，施加反方向力
+    const dx = pos.x - p.x;
+    const dy = pos.y - p.y;
+    // 对抗力：反方向冲击
+    p.vx -= dx * 0.18;
+    p.vy -= dy * 0.18;
+    // 但目标点还是有一点跟随（不完全抵抗）
+    t.x += (pos.x - t.x) * 0.08;
+    t.y += (pos.y - t.y) * 0.08;
+  }
+}
+
+function onDragEnd() {
+  if (dragIdx < 0) return;
+
+  // 计算拖拽距离
+  const p = pts[dragIdx];
+  const base = shapes[currentHoldShape] || shapes.idle;
+  const originX = base[dragIdx][0];
+  const originY = base[dragIdx][1];
+  const dist = Math.sqrt((p.x - originX)**2 + (p.y - originY)**2);
+
+  // 恢复目标点
+  targetPts = base.map(pt => ({ x: pt[0], y: pt[1] }));
+
+  if (dragMood === 'resist') {
+    // 反作用力弹射
+    const neighbors = [(dragIdx + 1) % 16, (dragIdx + 15) % 16, dragIdx];
+    const force = 7 + Math.random() * 5;
+    neighbors.forEach(i => {
+      pts[i].vx += (Math.random() - 0.5) * force;
+      pts[i].vy += (Math.random() - 0.5) * force;
+    });
+  }
+
+  // 拖拽超过一定距离才触发对话
+  if (dist > 15 && !isThinking) {
+    const cornerNames = ['左上角', '右边', '右下角', '左边'];
+    const whichCorner = cornerNames[[0,4,8,12].indexOf(dragIdx)] || '某个角';
+    const moodDesc = dragMood === 'resist'
+      ? `主人试图拉你的${whichCorner}，你使劲对抗，主人松手了，你弹了回去`
+      : `主人拉着你的${whichCorner}扯了一下，拉出去${Math.round(dist)}px，然后松手了`;
+    callPokeAPI(moodDesc, dragMood === 'resist' ? '烦躁' : '普通');
+  }
+}
+
+// 卷起来：从被拖的角开始，像布被捏住一角卷起来
+function triggerRoll(startCorner) {
+  const base = (shapes[currentHoldShape] || shapes.idle).map(p => ({ x: p[0], y: p[1] }));
+  // 卷起的锚点（对角）
+  const opposites = { 0: 8, 4: 12, 8: 0, 12: 4 };
+  const anchor = opposites[startCorner] ?? 8;
+  const anchorX = base[anchor][0];
+  const anchorY = base[anchor][1];
+
+  let rollFrame = 0;
+  // 每次卷的速度和深度略有不同
+  const FRAMES = 38 + Math.floor(Math.random() * 16);
+  const depth = 0.55 + Math.random() * 0.3;
+
+  const rollInterval = setInterval(() => {
+    rollFrame++;
+    const t = rollFrame / FRAMES;
+
+    if (t >= 1) {
+      clearInterval(rollInterval);
+      targetPts = base.map(p => ({ x: p.x, y: p.y }));
+      return;
+    }
+
+    // 卷进(0-0.45) 停顿(0.45-0.55) 展开(0.55-1)
+    let phase;
+    if (t < 0.45) phase = t / 0.45;
+    else if (t < 0.55) phase = 1;
+    else phase = 1 - (t - 0.55) / 0.45;
+
+    for (let i = 0; i < 16; i++) {
+      const b = base[i];
+      // 离被拉角越近，卷入越早越深；离锚点越近，几乎不动
+      const distToAnchor = Math.sqrt((b.x-anchorX)**2 + (b.y-anchorY)**2);
+      const maxDist = 120;
+      const pullFactor = Math.max(0, 1 - distToAnchor / maxDist);
+
+      // 每个点的卷入延迟按距离错开
+      const delay = (1 - pullFactor) * 0.4;
+      const localT = Math.max(0, Math.min(1, (phase - delay) * 2));
+      const ease = localT * localT * (3 - 2 * localT);
+
+      targetPts[i].x = b.x + (anchorX - b.x) * ease * depth * pullFactor;
+      targetPts[i].y = b.y + (anchorY - b.y) * ease * depth * pullFactor;
+    }
+  }, 22);
+}
+
+function onTap() {
+  const now = Date.now();
+  pokeTimestamps.push(now);
+  pokeTimestamps = pokeTimestamps.filter(t => now - t < 2000);
+  buState.totalPoked++;
+
+  const rapid = pokeTimestamps.length >= 4;
+
+  // 戳一下：给所有控制点一个随机冲击速度，模拟被触碰的物理感
+  const intensity = rapid ? 5.5 : 2.2;
+  for (let i = 0; i < pts.length; i++) {
+    pts[i].vx += (Math.random() - 0.5) * intensity;
+    pts[i].vy += (Math.random() - 0.5) * intensity;
+  }
+  // 四个角额外加速
+  [0,4,8,12].forEach(i => {
+    pts[i].vx += (Math.random() - 0.5) * intensity * 1.8;
+    pts[i].vy += (Math.random() - 0.5) * intensity * 1.8;
+  });
+
+  if (rapid) {
+    if (Math.random() < 0.70 && !isThinking)
+      callPokeAPI(`主人在2秒内连续戳了你${pokeTimestamps.length}次`, '烦躁');
+  } else {
+    if (Math.random() < 0.28 && !isThinking)
+      callPokeAPI('主人轻轻戳了你一下', '普通');
+  }
+}
+
+function onLongPress() {
+  // 长按：慢慢向内收缩
+  setShape('curled');
+  setTimeout(() => {
+    // 松开后回到对话形态，不强制idle
+    setShape(currentHoldShape);
+    if (!isThinking) {
+      if (Math.random() < 0.4) {
+        addBuMessage('......', 'curled');
+        memory.push({ role: 'assistant', content: '......' });
+        saveMemory();
+      } else {
+        callPokeAPI('主人长按着你很久', '长按');
+      }
+    }
+  }, 900);
+}
+
+async function callPokeAPI(desc, type) {
+  if (isThinking) return;
+  isThinking = true;
+
+  const hints = {
+    '普通': '被轻轻戳了一下。大概率懒得理，偶尔一句淡话。',
+    '烦躁': '被反复戳，有点被打扰，懒洋洋地表示不满。',
+    '长按': '被长按了很久。可以说奇怪的话，也可以就一个字。'
+  };
+
+  try {
+    const res = await fetch('https://api.deepseek.com/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        max_tokens: 80,
+        messages: [
+          { role: 'system', content: BU_SYSTEM },
+          ...memory.slice(-8),
+          { role: 'user', content: `[戳互动] ${desc}。${hints[type]} 记住只返回JSON。` }
+        ]
+      })
+    });
+    const data = await res.json();
+    if (!data.error) parseAndShow(data.choices[0].message.content);
+  } catch(e) {}
+
+  isThinking = false;
+}
+
+// ─── 解析API返回 ─────────────────────────────────────────────
+function parseAndShow(raw) {
+  console.log('[布 raw]', raw);
+
+  const validShapes = ['idle','listening','thinking','happy','stretched','curled','leaning'];
+  let shape = currentHoldShape || 'idle';
+  let text = raw;
+
+  // 方式1：[s:shape] 标记
+  const tagMatch = raw.match(/\[s:(\w+)\]/);
+  if (tagMatch) {
+    const c = tagMatch[1];
+    if (validShapes.includes(c)) shape = c;
+    text = raw.replace(/\s*\[s:\w+\]/, '').trim();
+    addBuMessage(text, shape);
+    memory.push({ role: 'assistant', content: text });
+    saveMemory();
+    return;
+  }
+
+  // 方式2：JSON格式，兼容各种字段名
+  try {
+    const clean = raw.replace(/```json|```/g, '').trim();
+    const jsonMatch = clean.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const obj = JSON.parse(jsonMatch[0]);
+      // 兼容 text/response/content 字段
+      text = obj.text || obj.response || obj.content || obj.message || '...';
+      // 兼容 shape/action/state 字段
+      const shapeRaw = obj.shape || obj.action || obj.state || '';
+      if (validShapes.includes(shapeRaw)) shape = shapeRaw;
+      addBuMessage(text, shape);
+      memory.push({ role: 'assistant', content: text });
+      saveMemory();
+      return;
+    }
+  } catch(e) {}
+
+  // 方式3：纯文字，保持当前形态
+  addBuMessage(text, shape);
+  memory.push({ role: 'assistant', content: text });
+  saveMemory();
+}
+
+// ─── 布的形态 ────────────────────────────────────────────────
+const canvas = document.getElementById('bu-canvas');
+const ctx = canvas.getContext('2d');
+let animFrame = 0;
+let currentShape = 'idle';
+
+// 16个控制点，顺时针，四个角各自独立
+// 每边4点：顶边(0-3), 右边(4-7), 底边(8-11), 左边(12-15)
+// 坐标基于140×140 canvas，中心(70,70)
+const shapes = {
+  idle: [
+    [38,32],[62,28],[78,28],[102,32],  // 顶
+    [108,42],[112,62],[112,78],[108,98], // 右
+    [102,108],[78,112],[62,112],[38,108], // 底
+    [32,98],[28,78],[28,62],[32,42]      // 左
+  ],
+  listening: [
+    [36,22],[62,16],[78,16],[104,22],
+    [112,36],[116,60],[116,80],[112,104],
+    [104,116],[78,122],[62,122],[36,116],
+    [28,104],[24,80],[24,60],[28,36]
+  ],
+  thinking: [
+    [44,38],[64,34],[76,34],[96,38],
+    [100,46],[104,64],[104,76],[100,94],
+    [96,102],[76,106],[64,106],[44,102],
+    [40,94],[36,76],[36,64],[40,46]
+  ],
+  happy: [
+    [30,28],[60,20],[80,20],[110,28],
+    [118,38],[122,62],[122,78],[118,108],
+    [110,116],[80,122],[60,122],[30,116],
+    [22,108],[18,78],[18,62],[22,38]
+  ],
+  // 横向拉伸，上下收窄——像铺平一角
+  stretched: [
+    [24,42],[60,36],[80,36],[116,42],
+    [122,50],[126,65],[126,75],[122,90],
+    [116,98],[80,104],[60,104],[24,98],
+    [18,90],[14,75],[14,65],[18,50]
+  ],
+  // 缩成一团，四角向内收
+  curled: [
+    [50,46],[64,42],[76,42],[90,46],
+    [94,52],[98,64],[98,76],[94,88],
+    [90,94],[76,98],[64,98],[50,94],
+    [46,88],[42,76],[42,64],[46,52]
+  ],
+  // 轻微偏向一侧，像靠着
+  leaning: [
+    [32,26],[62,22],[80,24],[108,30],
+    [114,42],[118,64],[116,80],[110,106],
+    [104,114],[78,118],[60,116],[34,112],
+    [26,102],[22,78],[24,58],[28,38]
+  ],
+  poked: [
+    [42,18],[64,12],[76,12],[98,18],
+    [110,36],[116,60],[116,80],[110,108],
+    [98,122],[76,128],[64,128],[42,122],
+    [30,108],[24,80],[24,60],[30,36]
+  ]
+};
+
+// 弹簧物理：每个点有位置、速度、目标
+const N = 16;
+let pts = shapes.idle.map(p => ({ x: p[0], y: p[1], vx: 0, vy: 0 }));
+let targetPts = shapes.idle.map(p => ({ x: p[0], y: p[1] }));
+
+// 每个角的独立呼吸参数（随机相位）
+const cornerPhase = Array.from({length: N}, (_, i) => ({
+  px: Math.random() * Math.PI * 2,
+  py: Math.random() * Math.PI * 2,
+  fx: 0.018 + Math.random() * 0.008,
+  fy: 0.016 + Math.random() * 0.008,
+  ax: 0.8 + Math.random() * 0.6,  // 振幅x
+  ay: 0.6 + Math.random() * 0.5   // 振幅y
+}));
+
+// 四角特别活跃（索引0,4,8,12是角点）
+[0,4,8,12].forEach(i => {
+  cornerPhase[i].ax *= 1.8;
+  cornerPhase[i].ay *= 1.8;
+});
+
+function setShape(shape) {
+  if (!shapes[shape]) return;
+  currentShape = shape;
+  targetPts = shapes[shape].map(p => ({ x: p[0], y: p[1] }));
+}
+
+let holdShape = false;
+function setShapeHold(shape) {
+  holdShape = true;
+  currentHoldShape = shape;
+  setShape(shape);
+}
+
+// 弹簧系数
+const SPRING = 0.12;
+const DAMPING = 0.72;
+
+function animateBu() {
+  animFrame++;
+
+  // 更新每个点的物理
+  for (let i = 0; i < N; i++) {
+    const p = pts[i];
+    const t = targetPts[i];
+    const c = cornerPhase[i];
+
+    // 呼吸偏移（叠加到目标位置上）
+    const breathX = Math.sin(animFrame * c.fx + c.px) * c.ax;
+    const breathY = Math.sin(animFrame * c.fy + c.py) * c.ay;
+
+    const tx = t.x + breathX;
+    const ty = t.y + breathY;
+
+    // 弹簧力
+    p.vx += (tx - p.x) * SPRING;
+    p.vy += (ty - p.y) * SPRING;
+
+    // 阻尼
+    p.vx *= DAMPING;
+    p.vy *= DAMPING;
+
+    p.x += p.vx;
+    p.y += p.vy;
+  }
+
+  // 绘制
+  ctx.clearRect(0, 0, 140, 140);
+  ctx.beginPath();
+  ctx.moveTo((pts[0].x + pts[N-1].x)/2, (pts[0].y + pts[N-1].y)/2);
+  for (let i = 0; i < N; i++) {
+    const curr = pts[i];
+    const next = pts[(i+1) % N];
+    ctx.quadraticCurveTo(curr.x, curr.y, (curr.x+next.x)/2, (curr.y+next.y)/2);
+  }
+  ctx.closePath();
+
+  // 渐变填充
+  const cx = pts.reduce((s,p) => s+p.x, 0) / N;
+  const cy = pts.reduce((s,p) => s+p.y, 0) / N;
+  const grad = ctx.createRadialGradient(cx, cy, 4, cx, cy, 55);
+  grad.addColorStop(0, 'rgba(210, 192, 160, 0.20)');
+  grad.addColorStop(0.6, 'rgba(190, 172, 148, 0.10)');
+  grad.addColorStop(1, 'rgba(180, 162, 138, 0.04)');
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // 边线，透明度随呼吸轻微波动
+  const strokeAlpha = 0.38 + Math.sin(animFrame * 0.025) * 0.08;
+  ctx.strokeStyle = `rgba(184, 168, 152, ${strokeAlpha})`;
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+
+  // 织物纹理线（跟随形变）
+  ctx.save();
+  ctx.clip();
+  ctx.strokeStyle = 'rgba(184, 168, 152, 0.06)';
+  ctx.lineWidth = 0.7;
+  for (let row = 0; row < 7; row++) {
+    const t = (row + 1) / 8;
+    // 在布的范围内画横线，用控制点插值
+    const topPt = lerpPt(pts[0], pts[4], t);   // 顶到右插值（近似）
+    const botPt = lerpPt(pts[12], pts[8], t);
+    const wave = Math.sin(animFrame * 0.014 + row * 0.9) * 1.8;
+    ctx.beginPath();
+    ctx.moveTo(topPt.x + wave, topPt.y);
+    ctx.lineTo(botPt.x + wave, botPt.y);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  requestAnimationFrame(animateBu);
+}
+
+function lerpPt(a, b, t) {
+  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+}
+
+// ─── 消息系统 ────────────────────────────────────────────────
+function getTime() {
+  const n = new Date();
+  return `${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}`;
+}
+
+function addMessage(role, text) {
+  const msgs = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = `msg ${role}`;
+  div.innerHTML = `<div class="msg-bubble">${text}</div><div class="msg-time">${getTime()}</div>`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function addBuMessage(text, shape) {
+  addMessage('bu', text);
+  if (shape) setShapeHold(shape);
+}
+
+function renderMemory() {
+  document.getElementById('messages').innerHTML = '';
+  for (const m of memory) {
+    addMessage(m.role === 'assistant' ? 'bu' : 'user', m.content);
+  }
+}
+
+function saveMemory() {
+  if (memory.length > 40) memory = memory.slice(-40);
+  localStorage.setItem('bu_memory', JSON.stringify(memory));
+}
+
+// ─── 发消息 ─────────────────────────────────────────────────
+async function sendMessage() {
+  const input = document.getElementById('user-input');
+  const text = input.value.trim();
+  if (!text || isThinking) return;
+
+  input.value = '';
+  addMessage('user', text);
+  memory.push({ role: 'user', content: text });
+
+  isThinking = true;
+  document.getElementById('send-btn').disabled = true;
+  document.getElementById('typing').classList.add('show');
+  setShape('thinking');
+
+  try {
+    const res = await fetch('https://api.deepseek.com/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        max_tokens: 150,
+        messages: [
+          { role: 'system', content: BU_SYSTEM },
+          ...memory.slice(-20),
+          { role: 'user', content: '记住在回复末尾加形态标记，格式：[s:形态名]，如 伸平了。 [s:stretched]' }
+        ]
+      })
+    });
+
+    const data = await res.json();
+    document.getElementById('typing').classList.remove('show');
+
+    if (data.error) {
+      addBuMessage('（出错了：' + data.error.message + '）', 'idle');
+    } else {
+      parseAndShow(data.choices[0].message.content);
+    }
+  } catch(e) {
+    document.getElementById('typing').classList.remove('show');
+    addBuMessage('（网断了还是key不对）', 'idle');
+  }
+
+  isThinking = false;
+  document.getElementById('send-btn').disabled = false;
+  input.focus();
+}
+</script>
+</body>
+</html>
