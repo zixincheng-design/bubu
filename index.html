@@ -279,8 +279,8 @@
   <h2>— 初始化 布 —</h2>
   <p>布 需要接入云端服务才能在多端醒来。</p>
   <input id="api-input" class="setup-input" type="password" placeholder="DeepSeek API Key (sk-...)" />
-  <input id="sb-url-input" class="setup-input" type="text" placeholder="Supabase URL" />
-  <input id="sb-key-input" class="setup-input" type="password" placeholder="Supabase Anon Key" />
+  <input id="sb-url-input" class="setup-input" type="text" placeholder="Supabase API URL" />
+  <input id="sb-key-input" class="setup-input" type="password" placeholder="Supabase Publishable Key" />
   <input id="room-input" class="setup-input" type="text" placeholder="双端同步暗号 (例如: my_bu_box)" />
   <button id="api-btn" onclick="initBu()">唤醒</button>
   <span id="api-note">配置均保存在本地浏览器，刷新无需重填</span>
@@ -306,7 +306,7 @@
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://lf26-cdn-tos.bytecdntp.com/cdn/expire-1-M/supabase-js/2.43.4/supabase-js.min.js"></script>
 
 <script>
 // ─── 布的灵魂 ───────────────────────────────────────────────
@@ -334,8 +334,8 @@ let sbUrl = localStorage.getItem('bu_sb_url') || '';
 let sbKey = localStorage.getItem('bu_sb_key') || '';
 let roomId = localStorage.getItem('bu_room_id') || '';
 
-let supabase = null;
-let memory = []; // 内存中只存当前房间拉取到的记录
+let sbClient = null; // 重命名变量，彻底避开浏览器的全局冲突
+let memory = []; 
 let isThinking = false;
 let buState = { totalPoked: 0 };
 
@@ -346,7 +346,6 @@ let currentHoldShape = 'idle';
 
 // ─── 初始化 ─────────────────────────────────────────────────
 window.onload = () => {
-  // 预填本地缓存的配置
   if(apiKey) document.getElementById('api-input').value = apiKey;
   if(sbUrl) document.getElementById('sb-url-input').value = sbUrl;
   if(sbKey) document.getElementById('sb-key-input').value = sbKey;
@@ -393,24 +392,33 @@ function initBu() {
 }
 
 async function startBu() {
-  // 初始化 Supabase 客户端
-  supabase = window.supabase.createClient(sbUrl, sbKey);
+  if (!window.supabase) {
+    alert("❌ 糟糕！依赖库加载失败，请检查网络！");
+    return;
+  }
 
-  // 从云端数据库拉取历史数据
-  await fetchHistoryFromCloud();
+  try {
+    // 使用全局对象初始化我们更名后的客户端
+    sbClient = window.supabase.createClient(sbUrl, sbKey);
 
-  // 开启多端实时监听
-  subscribeToCloudChanges();
+    // 从云端数据库拉取历史数据
+    await fetchHistoryFromCloud();
 
-  if (memory.length === 0) {
-    setTimeout(() => addBuMessage('...', 'idle'), 1200);
+    // 开启多端实时监听
+    subscribeToCloudChanges();
+
+    if (memory.length === 0) {
+      setTimeout(() => addBuMessage('...', 'idle'), 1200);
+    }
+  } catch (err) {
+    alert("❌ 连接云端数据库失败: " + err.message);
   }
 }
 
 // ─── 云端数据同步函数 ──────────────────────────────────────────
 async function fetchHistoryFromCloud() {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await sbClient
       .from('bu_messages')
       .select('role, content, shape')
       .eq('room_id', roomId)
@@ -427,20 +435,18 @@ async function fetchHistoryFromCloud() {
 }
 
 function subscribeToCloudChanges() {
-  supabase
+  sbClient
     .channel('bu-realtime-channel')
     .on(
       'postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'bu_messages', filter: `room_id=eq.${roomId}` },
       (payload) => {
         const newMsg = payload.new;
-        // 避免重复添加本地刚刚发送上去的重复消息
         const isExist = memory.some(m => m.content === newMsg.content && m.role === newMsg.role);
         if (!isExist) {
           memory.push({ role: newMsg.role, content: newMsg.content, shape: newMsg.shape });
           if (newMsg.role === 'user') {
             addMessage('user', newMsg.content);
-            // 另一端发了消息，这端也配合做出思考形态
             setShape('thinking');
             document.getElementById('typing').classList.add('show');
           } else {
@@ -455,7 +461,7 @@ function subscribeToCloudChanges() {
 
 async function uploadMessageToCloud(role, content, shape = 'idle') {
   try {
-    await supabase
+    await sbClient
       .from('bu_messages')
       .insert([{ room_id: roomId, role, content, shape }]);
   } catch (e) {
@@ -662,7 +668,6 @@ async function callPokeAPI(desc, type) {
   };
 
   try {
-    // 戳互动也同步到云端：本地先存用户的“戳动作”
     await uploadMessageToCloud('user', `[手势反馈] ${desc}`);
 
     const res = await fetch('https://api.deepseek.com/chat/completions', {
@@ -686,7 +691,6 @@ async function callPokeAPI(desc, type) {
 
 // ─── 解析API返回 ─────────────────────────────────────────────
 function parseAndShow(raw) {
-  console.log('[布 raw]', raw);
   const validShapes = ['idle','listening','thinking','happy','stretched','curled','leaning'];
   let shape = currentHoldShape || 'idle';
   let text = raw;
@@ -722,7 +726,7 @@ function parseAndShow(raw) {
   uploadMessageToCloud('assistant', text, shape);
 }
 
-// ─── 布的形态动画机制 (保持原样) ──────────────────────────────────
+// ─── 布的形态动画机制 ──────────────────────────────────
 const canvas = document.getElementById('bu-canvas');
 const ctx = canvas.getContext('2d');
 let animFrame = 0;
@@ -818,7 +822,6 @@ function getTime() {
 }
 
 function addMessage(role, text) {
-  // 过滤掉纯内部的手势同步描述，不显示在聊天气泡里
   if (text.startsWith('[手势反馈]')) return; 
 
   const msgs = document.getElementById('messages');
@@ -851,7 +854,6 @@ async function sendMessage() {
   addMessage('user', text);
   memory.push({ role: 'user', content: text, shape: 'idle' });
 
-  // 1. 同步用户发送的消息到 Supabase
   await uploadMessageToCloud('user', text, 'idle');
 
   isThinking = true;
@@ -868,7 +870,6 @@ async function sendMessage() {
         max_tokens: 150,
         messages: [
           { role: 'system', content: BU_SYSTEM },
-          // 过滤掉内部手势，只把纯对话历史发给 DeepSeek 保持它的纯净灵魂
           ...memory.filter(m => !m.content.startsWith('[手势反馈]')).map(m => ({ role: m.role, content: m.content })).slice(-20),
           { role: 'user', content: '记住在回复末尾加形态标记，格式：[s:形态名]，如 伸平了。 [s:stretched]' }
         ]
